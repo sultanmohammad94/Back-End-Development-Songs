@@ -13,9 +13,10 @@ import sys
 SITE_ROOT = os.path.realpath(os.path.dirname(__file__))
 json_url = os.path.join(SITE_ROOT, "data", "songs.json")
 songs_list: list = json.load(open(json_url))
-
-# client = MongoClient(
-#     f"mongodb://{app.config['MONGO_USERNAME']}:{app.config['MONGO_PASSWORD']}@localhost")
+app.config["MONGO_USERNAME"] = os.environ.get('MONGODB_USERNAME')
+app.config["MONGO_PASSWORD"] = os.environ.get('MONGO_PASSWORD')
+client = MongoClient(
+    f"mongodb://{app.config['MONGO_USERNAME']}:{app.config['MONGO_PASSWORD']}@localhost")
 mongodb_service = os.environ.get('MONGODB_SERVICE')
 mongodb_username = os.environ.get('MONGODB_USERNAME')
 mongodb_password = os.environ.get('MONGODB_PASSWORD')
@@ -51,3 +52,48 @@ def parse_json(data):
 ######################################################################
 # INSERT CODE HERE
 ######################################################################
+@app.route('/health', methods = ['GET'])
+def health():
+    response = {"status": "OK"}
+    return response
+
+@app.route('/count', methods = ['GET'])
+def count():
+    response = jsonify({
+        "count": db.songs.count_documents({})
+    })
+    response.status_code = 200
+    return response
+
+@app.route('/song', methods = ["GET"])
+def song():
+    songs = list(db.songs.find({}))
+    for song in songs:
+        song['_id'] = str(song['_id'])
+    response = jsonify(json.loads(json_util.dumps(songs)))
+    return response
+
+@app.route('/song/<int:id>', methods = ["GET"])
+def get_song_by_id(id):
+    song = (db.songs.find_one({"id":id}))
+    if song:
+        song['_id'] = str(song['_id'])
+        response = jsonify(song)
+    else:
+        response = {
+            "message": "song with id not found"
+        }
+    return response
+
+@app.route('/song', methods = ["POST"])
+def create_song():
+    data = request.get_json()
+    if data.get("id"):
+        song = db.songs.find_one({"id": data.get("id")})
+        if song:
+            return jsonify({"Message":f"song with id {song['id']} already present"}), 302
+        else:
+            song = db.songs.insert_one(data)
+            inserted_id = str(song.inserted_id)
+            return jsonify({"inserted id": {"$oid": inserted_id}}), 201
+    return jsonify({"message": "song with id not found"}), 404
